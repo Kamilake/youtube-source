@@ -24,7 +24,7 @@ dependencyResolutionManagement {
             library("slf4j", "org.slf4j", "slf4j-api").version("1.7.25")
             library("annotations", "org.jetbrains", "annotations").version("24.1.0")
 
-            plugin("lavalink-gradle-plugin", "com.github.Kamilake:lavalink-gradle-plugin").version("23cb22bdc2")
+            plugin("lavalink-gradle-plugin", "com.github.Kamilake.lavalink-gradle-plugin").version("23cb22bdc2")
 
             val mavenPublishPlugin = version("maven-publish-plugin", "0.25.3")
             plugin("maven-publish", "com.vanniktech.maven.publish").versionRef(mavenPublishPlugin)
