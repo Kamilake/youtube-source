@@ -7,6 +7,11 @@ include("plugin")
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
     versionCatalogs {
         create("libs") {
             version("lavaplayer-v1", "1.5.3")
@@ -31,4 +36,8 @@ dependencyResolutionManagement {
             plugin("maven-publish-base", "com.vanniktech.maven.publish.base").versionRef(mavenPublishPlugin)
         }
     }
+}
+
+dependencies {
+    implementation("com.github.Kamilake:lavalink-gradle-plugin:Tag")
 }
