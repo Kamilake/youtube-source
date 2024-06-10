@@ -1,47 +1,41 @@
-import com.vanniktech.maven.publish.JavaLibrary
-import com.vanniktech.maven.publish.JavadocJar
-
 plugins {
-  `java-library`
-  // alias(libs.plugins.lavalink.gradle.plugin)
-  alias(libs.plugins.maven.publish.base)
+    `java-library`
+    `maven-publish`
 }
 
-repositories {
-  mavenCentral()
-  maven { url = uri("https://jitpack.io") }
-}
-
-lavalinkPlugin {
-  name = "youtube-plugin"
-  path = "dev.lavalink.youtube.plugin"
-  apiVersion = libs.versions.lavalink
-  serverVersion = "4.0.4"
-  configurePublishing = false
-}
-
-base {
-  archivesName = "youtube-plugin"
-}
+val moduleName = "plugin"
 
 dependencies {
-  implementation(projects.common)
-  implementation(projects.v2)
-  compileOnly(libs.lavalink.server)
-  compileOnly(libs.lavaplayer.ext.youtube.rotator)
-  implementation(libs.rhino.engine)
-  implementation(libs.nanojson)
-  compileOnly(libs.slf4j)
-  compileOnly(libs.annotations)
-  implementation("com.github.Kamilake.lavalink-gradle-plugin:dev.arbjerg.lavalink.gradle-plugin.gradle.plugin:23cb22bdc2")
+    implementation(project(":common"))
+    implementation(project(":lldevs"))
+    compileOnly("dev.arbjerg.lavalink:plugin-api:3.7.11")
+    compileOnly("dev.arbjerg.lavalink:Lavalink-Server:3.7.11")
+    compileOnly("dev.arbjerg:lavaplayer-ext-youtube-rotator:1.5.3")
 }
 
 java {
-  sourceCompatibility = JavaVersion.VERSION_11
-  targetCompatibility = JavaVersion.VERSION_11
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
 }
 
-mavenPublishing {
-  coordinates("dev.lavalink.youtube", "youtube-plugin", version.toString())
-  configure(JavaLibrary(JavadocJar.None(), sourcesJar = false))
+val sourcesJar by tasks.registering(Jar::class) {
+    archiveClassifier.set("sources")
+    from(sourceSets["main"].allSource)
+}
+
+tasks.jar {
+    dependsOn(project(":common").tasks.jar)
+    dependsOn(project(":lldevs").tasks.jar)
+    from(configurations.runtimeClasspath.get().map(::zipTree))
+    duplicatesStrategy = DuplicatesStrategy.WARN
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"])
+            artifactId = moduleName
+            artifact(sourcesJar)
+        }
+    }
 }
