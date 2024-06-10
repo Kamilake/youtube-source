@@ -7,11 +7,6 @@ include("plugin")
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-    repositories {
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-    }
     versionCatalogs {
         create("libs") {
             version("lavaplayer-v1", "1.5.3")
@@ -29,15 +24,11 @@ dependencyResolutionManagement {
             library("slf4j", "org.slf4j", "slf4j-api").version("1.7.25")
             library("annotations", "org.jetbrains", "annotations").version("24.1.0")
 
-            plugin("lavalink-gradle-plugin", "com.github.Kamilake.lavalink-gradle-plugin").version("23cb22bdc2")
+            // plugin("lavalink-gradle-plugin", "dev.arbjerg.lavalink.gradle-plugin").version("1.0.15")
 
             val mavenPublishPlugin = version("maven-publish-plugin", "0.25.3")
             plugin("maven-publish", "com.vanniktech.maven.publish").versionRef(mavenPublishPlugin)
             plugin("maven-publish-base", "com.vanniktech.maven.publish.base").versionRef(mavenPublishPlugin)
         }
     }
-}
-
-dependencies {
-    implementation("com.github.Kamilake:lavalink-gradle-plugin:Tag")
 }
