@@ -36,7 +36,7 @@ dependencyResolutionManagement {
       library("slf4j", "org.slf4j", "slf4j-api").version("1.7.25")
       library("annotations", "org.jetbrains", "annotations").version("24.1.0")
 
-      plugin("lavalink-gradle-plugin", "com.github.Kamilake.lavalink-gradle-plugin").version("2")
+      plugin("lavalink-gradle-plugin", "com.github.Kamilake").version("2")
 
 
 
