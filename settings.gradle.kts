@@ -4,6 +4,13 @@ pluginManagement {
     maven { url = uri("https://jitpack.io") }
     // 필요한 경우 다른 저장소 추가
   }
+
+      resolutionStrategy {
+        eachPlugin {
+            if(requested.id.toString() == "com.github.Kamilake.lavalink-gradle-plugin")
+                useModule("com.github.Kamilake.lavalink-gradle-plugin:dev.arbjerg.lavalink.gradle-plugin.gradle.plugin:2")
+        }
+    }
 }
 
 rootProject.name = "youtube-source"
@@ -36,7 +43,7 @@ dependencyResolutionManagement {
       library("slf4j", "org.slf4j", "slf4j-api").version("1.7.25")
       library("annotations", "org.jetbrains", "annotations").version("24.1.0")
 
-      plugin("lavalink-gradle-plugin", "com.github.Kamilake").version("2")
+      plugin("lavalink-gradle-plugin", "com.github.Kamilake.lavalink-gradle-plugin").version("2")
 
 
 
