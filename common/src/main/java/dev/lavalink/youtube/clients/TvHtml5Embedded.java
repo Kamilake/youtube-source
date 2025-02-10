@@ -1,5 +1,8 @@
 package dev.lavalink.youtube.clients;
 
+import com.sedmelluq.discord.lavaplayer.tools.DataFormatTools;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity;
 import com.sedmelluq.discord.lavaplayer.tools.JsonBrowser;
 import com.sedmelluq.discord.lavaplayer.tools.Units;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
@@ -66,13 +69,17 @@ public class TvHtml5Embedded extends StreamingNonMusicClient {
             if (!authorJson.isNull()) {
                 String videoId = item.get("videoId").text();
                 JsonBrowser titleField = item.get("title");
-                String title = titleField.get("simpleText").textOrDefault(titleField.get("runs").index(0).get("text").text());
-                String author = authorJson.get("runs").index(0).get("text").textOrDefault("Unknown artist");
+                String title = DataFormatTools.defaultOnNull(titleField.get("simpleText").text(), titleField.get("runs").index(0).get("text").text());
+                String author = DataFormatTools.defaultOnNull(authorJson.get("runs").index(0).get("text").text(), "Unknown artist");
                 long duration = Units.secondsToMillis(item.get("lengthSeconds").asLong(Units.DURATION_SEC_UNKNOWN));
-
                 tracks.add(buildAudioTrack(source, track, title, author, duration, videoId, false));
             }
         }
+    }
+
+    @Override
+    public boolean isEmbedded() {
+        return true;
     }
 
     @Override
@@ -99,6 +106,11 @@ public class TvHtml5Embedded extends StreamingNonMusicClient {
     }
 
     @Override
+    public boolean supportsOAuth() {
+        return true;
+    }
+
+    @Override
     @NotNull
     public String getIdentifier() {
         return BASE_CONFIG.getName();
@@ -109,6 +121,7 @@ public class TvHtml5Embedded extends StreamingNonMusicClient {
                                   @NotNull HttpInterface httpInterface,
                                   @NotNull String playlistId,
                                   @Nullable String selectedVideoId) {
-        throw new UnsupportedOperationException();
+        throw new FriendlyException("This client cannot load playlists", Severity.COMMON,
+            new RuntimeException("TVHTML5_EMBEDDED cannot be used to load playlists"));
     }
 }

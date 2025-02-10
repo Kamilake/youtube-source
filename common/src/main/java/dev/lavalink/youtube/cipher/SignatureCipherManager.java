@@ -4,6 +4,7 @@ import com.sedmelluq.discord.lavaplayer.tools.DataFormatTools;
 import com.sedmelluq.discord.lavaplayer.tools.ExceptionTools;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
+import dev.lavalink.youtube.YoutubeSource;
 import dev.lavalink.youtube.track.format.StreamFormat;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -49,27 +50,27 @@ public class SignatureCipherManager {
   private static final String BEFORE_ACCESS = "(?:\\[\\\"|\\.)";
   private static final String AFTER_ACCESS = "(?:\\\"\\]|)";
   private static final String VARIABLE_PART_ACCESS = BEFORE_ACCESS + VARIABLE_PART + AFTER_ACCESS;
-  private static final String REVERSE_PART = ":function\\(a\\)\\{(?:return )?a\\.reverse\\(\\)\\}";
-  private static final String SLICE_PART = ":function\\(a,b\\)\\{return a\\.slice\\(b\\)\\}";
-  private static final String SPLICE_PART = ":function\\(a,b\\)\\{a\\.splice\\(0,b\\)\\}";
-  private static final String SWAP_PART = ":function\\(a,b\\)\\{" +
-      "var c=a\\[0\\];a\\[0\\]=a\\[b%a\\.length\\];a\\[b(?:%a.length|)\\]=c(?:;return a)?\\}";
+  private static final String REVERSE_PART = ":function\\(\\w\\)\\{(?:return )?\\w\\.reverse\\(\\)\\}";
+  private static final String SLICE_PART = ":function\\(\\w,\\w\\)\\{return \\w\\.slice\\(\\w\\)\\}";
+  private static final String SPLICE_PART = ":function\\(\\w,\\w\\)\\{\\w\\.splice\\(0,\\w\\)\\}";
+  private static final String SWAP_PART = ":function\\(\\w,\\w\\)\\{" +
+      "var \\w=\\w\\[0\\];\\w\\[0\\]=\\w\\[\\w%\\w\\.length\\];\\w\\[\\w(?:%\\w.length|)\\]=\\w(?:;return \\w)?\\}";
 
   private static final Pattern functionPattern = Pattern.compile(
-      "function(?: " + VARIABLE_PART + ")?\\(a\\)\\{" +
-      "a=a\\.split\\(\"\"\\);\\s*" +
-      "((?:(?:a=)?" + VARIABLE_PART + VARIABLE_PART_ACCESS + "\\(a,\\d+\\);)+)" +
-      "return a\\.join\\(\"\"\\)" +
-      "\\}"
+      "function(?: " + VARIABLE_PART + ")?\\(([a-zA-Z])\\)\\{" +
+          "\\1=\\1\\.split\\(\"\"\\);\\s*" +
+          "((?:(?:\\1=)?" + VARIABLE_PART + VARIABLE_PART_ACCESS + "\\(\\1,\\d+\\);)+)" +
+          "return \\1\\.join\\(\"\"\\)" +
+          "\\}"
   );
 
   private static final Pattern actionsPattern = Pattern.compile(
       "var (" + VARIABLE_PART + ")=\\{((?:(?:" +
-      VARIABLE_PART_DEFINE + REVERSE_PART + "|" +
-      VARIABLE_PART_DEFINE + SLICE_PART + "|" +
-      VARIABLE_PART_DEFINE + SPLICE_PART + "|" +
-      VARIABLE_PART_DEFINE + SWAP_PART +
-      "),?\\n?)+)\\};"
+          VARIABLE_PART_DEFINE + REVERSE_PART + "|" +
+          VARIABLE_PART_DEFINE + SLICE_PART + "|" +
+          VARIABLE_PART_DEFINE + SPLICE_PART + "|" +
+          VARIABLE_PART_DEFINE + SWAP_PART +
+          "),?\\n?)+)\\};"
   );
 
   private static final String PATTERN_PREFIX = "(?:^|,)\\\"?(" + VARIABLE_PART + ")\\\"?";
@@ -79,12 +80,14 @@ public class SignatureCipherManager {
   private static final Pattern splicePattern = Pattern.compile(PATTERN_PREFIX + SPLICE_PART, Pattern.MULTILINE);
   private static final Pattern swapPattern = Pattern.compile(PATTERN_PREFIX + SWAP_PART, Pattern.MULTILINE);
   private static final Pattern timestampPattern = Pattern.compile("(signatureTimestamp|sts):(\\d+)");
+
   private static final Pattern nFunctionPattern = Pattern.compile(
-      "function\\(\\s*(\\w+)\\s*\\)\\s*\\{var" +
-          "\\s*(\\w+)=\\1\\.split\\(\"\"\\),\\s*(\\w+)=(\\[.*?\\]);\\s*\\3\\[\\d+\\]" +
-          "(.*?try)(\\{.*?\\})catch\\(\\s*(\\w+)\\s*\\)\\s*\\" +
-          "{\\s*return\"enhanced_except_([A-z0-9-]+)\"\\s*\\+\\s*\\1\\s*}\\s*return\\s*\\2\\.join\\(\"\"\\)\\};", Pattern.DOTALL
-  );
+      "function\\(\\s*(\\w+)\\s*\\)\\s*\\{" +
+          "var\\s*(\\w+)=(?:\\1\\.split\\(.*?\\)|String\\.prototype\\.split\\.call\\(\\1,.*?\\))," +
+          "\\s*(\\w+)=(\\[.*?]);\\s*\\3\\[\\d+]" +
+          "(.*?try)(\\{.*?})catch\\(\\s*(\\w+)\\s*\\)\\s*\\{" +
+          "\\s*return\"[\\w-]+([A-z0-9-]+)\"\\s*\\+\\s*\\1\\s*}" +
+          "\\s*return\\s*(\\2\\.join\\(\"\"\\)|Array\\.prototype\\.join\\.call\\(\\2,.*?\\))};", Pattern.DOTALL);
 
   private final ConcurrentMap<String, SignatureCipher> cipherCache;
   private final Set<String> dumpedScriptUrls;
@@ -105,9 +108,10 @@ public class SignatureCipherManager {
 
   /**
    * Produces a valid playback URL for the specified track
+   *
    * @param httpInterface HTTP interface to use
-   * @param playerScript Address of the script which is used to decipher signatures
-   * @param format The track for which to get the URL
+   * @param playerScript  Address of the script which is used to decipher signatures
+   * @param format        The track for which to get the URL
    * @return Valid playback URL
    * @throws IOException On network IO error
    */
@@ -127,7 +131,23 @@ public class SignatureCipherManager {
 
     if (!DataFormatTools.isNullOrEmpty(nParameter)) {
       try {
-        uri.setParameter("n", cipher.transform(nParameter, scriptEngine));
+        String transformed = cipher.transform(nParameter, scriptEngine);
+        String logMessage = null;
+
+        if (transformed == null) {
+          logMessage = "Transformed n parameter is null, n function possibly faulty";
+        } else if (nParameter.equals(transformed)) {
+          logMessage = "Transformed n parameter is the same as input, n function possibly short-circuited";
+        } else if (transformed.startsWith("enhanced_except_") || transformed.endsWith("_w8_" + nParameter)) {
+          logMessage = "N function did not complete due to exception";
+        }
+
+        if (logMessage != null) {
+            log.warn("{} (in: {}, out: {}, player script: {}, source version: {})",
+                logMessage, nParameter, transformed, playerScript, YoutubeSource.VERSION);
+        }
+
+        uri.setParameter("n", transformed);
       } catch (ScriptException | NoSuchMethodException e) {
         // URLs can still be played without a resolved n parameter. It just means they're
         // throttled. But we shouldn't throw an exception anyway as it's not really fatal.
@@ -215,8 +235,8 @@ public class SignatureCipherManager {
       Path path = Files.createTempFile("lavaplayer-yt-player-script", ".js");
       Files.write(path, script.getBytes(StandardCharsets.UTF_8));
 
-      log.error("Problematic YouTube player script {} detected (issue detected with script: {}). Dumped to {}",
-          sourceUrl, issue, path.toAbsolutePath());
+      log.error("Problematic YouTube player script {} detected (issue detected with script: {}). Dumped to {} (Source version: {})",
+          sourceUrl, issue, path.toAbsolutePath(), YoutubeSource.VERSION);
     } catch (Exception e) {
       log.error("Failed to dump problematic YouTube player script {} (issue detected with script: {})", sourceUrl, issue);
     }
@@ -240,9 +260,9 @@ public class SignatureCipherManager {
     String swapKey = extractDollarEscapedFirstGroup(swapPattern, actionBody);
 
     Pattern extractor = Pattern.compile(
-        "(?:a=)?" + Pattern.quote(actions.group(1)) + BEFORE_ACCESS + "(" +
+        "(?:\\w=)?" + Pattern.quote(actions.group(1)) + BEFORE_ACCESS + "(" +
             String.join("|", getQuotedFunctions(reverseKey, slicePart, splicePart, swapKey)) +
-            ")" + AFTER_ACCESS + "\\(a,(\\d+)\\)"
+            ")" + AFTER_ACCESS + "\\(\\w,(\\d+)\\)"
     );
 
     Matcher functions = functionPattern.matcher(script);
@@ -251,21 +271,22 @@ public class SignatureCipherManager {
       throw new IllegalStateException("Must find decipher function from script.");
     }
 
-    Matcher matcher = extractor.matcher(functions.group(1));
+    Matcher matcher = extractor.matcher(functions.group(2));
 
     if (!scriptTimestamp.find()) {
       dumpProblematicScript(script, sourceUrl, "no timestamp match");
       throw new IllegalStateException("Must find timestamp from script: " + sourceUrl);
     }
 
-    String nFunction = "";
-
-    if (nFunctionMatcher.find()) {
-      nFunction = nFunctionMatcher.group(0);
-    } else {
-      // Don't throw any exceptions here since if n function is not extracted audio still can be played
+    if (!nFunctionMatcher.find()) {
       dumpProblematicScript(script, sourceUrl, "no n function match");
+      throw new IllegalStateException("Must find n function from script: " + sourceUrl);
     }
+
+    String nFunction = nFunctionMatcher.group(0);
+    String nfParameterName = DataFormatTools.extractBetween(nFunction, "(", ")");
+    // remove short-circuit that prevents n challenge transformation
+    nFunction = nFunction.replaceAll("if\\s*\\(\\s*typeof\\s*[\\w$]+\\s*===?.*?\\)\\s*return\\s+" + nfParameterName + "\\s*;?", "");
 
     SignatureCipher cipherKey = new SignatureCipher(nFunction, scriptTimestamp.group(2), script);
 

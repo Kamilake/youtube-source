@@ -3,6 +3,7 @@ package dev.lavalink.youtube.http;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.tools.http.HttpContextRetryCounter;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
+import dev.lavalink.youtube.clients.skeleton.Client;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.CookieStore;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -19,13 +20,19 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
 
   private static final String ATTRIBUTE_RESET_RETRY = "isResetRetry";
   public static final String ATTRIBUTE_USER_AGENT_SPECIFIED = "clientUserAgent";
+  public static final String ATTRIBUTE_VISITOR_DATA_SPECIFIED = "clientVisitorData";
 
   private static final HttpContextRetryCounter retryCounter = new HttpContextRetryCounter("yt-token-retry");
 
   private YoutubeAccessTokenTracker tokenTracker;
+  private YoutubeOauth2Handler oauth2Handler;
 
   public void setTokenTracker(@NotNull YoutubeAccessTokenTracker tokenTracker) {
     this.tokenTracker = tokenTracker;
+  }
+
+  public void setOauth2Handler(@NotNull YoutubeOauth2Handler oauth2Handler) {
+    this.oauth2Handler = oauth2Handler;
   }
 
   @Override
@@ -56,12 +63,29 @@ public class YoutubeHttpContextFilter extends BaseYoutubeHttpContextFilter {
       return;
     }
 
+    if (oauth2Handler.isOauthFetchContext(context)) {
+      return;
+    }
+
     String userAgent = context.getAttribute(ATTRIBUTE_USER_AGENT_SPECIFIED, String.class);
 
-    if (userAgent != null) {
-      request.setHeader("User-Agent", userAgent);
-      request.setHeader("X-Goog-Visitor-Id", tokenTracker.getVisitorId());
-      context.removeAttribute(ATTRIBUTE_USER_AGENT_SPECIFIED);
+    if (!request.getURI().getHost().contains("googlevideo")) {
+      if (userAgent != null) {
+        request.setHeader("User-Agent", userAgent);
+
+        String visitorData = context.getAttribute(ATTRIBUTE_VISITOR_DATA_SPECIFIED, String.class);
+        request.setHeader("X-Goog-Visitor-Id", visitorData != null ? visitorData : tokenTracker.getVisitorId());
+
+        context.removeAttribute(ATTRIBUTE_VISITOR_DATA_SPECIFIED);
+        context.removeAttribute(ATTRIBUTE_USER_AGENT_SPECIFIED);
+      }
+
+      boolean isRequestFromOauthedClient = context.getAttribute(Client.OAUTH_CLIENT_ATTRIBUTE) == Boolean.TRUE;
+
+      if (isRequestFromOauthedClient && Client.PLAYER_URL.equals(request.getURI().toString())) {
+        // only apply the token to /player requests.
+        oauth2Handler.applyToken(request);
+      }
     }
 
 //    try {

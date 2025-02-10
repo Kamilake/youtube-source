@@ -1,5 +1,6 @@
 import com.vanniktech.maven.publish.JavaLibrary
 import com.vanniktech.maven.publish.JavadocJar
+import org.apache.tools.ant.filters.ReplaceTokens
 
 plugins {
     `java-library`
@@ -18,6 +19,7 @@ base {
 dependencies {
     api(projects.common)
     compileOnly(libs.lavaplayer.v2)
+
     implementation(libs.rhino.engine)
     implementation(libs.nanojson)
     compileOnly(libs.slf4j)
@@ -28,4 +30,14 @@ dependencies {
 
 mavenPublishing {
     configure(JavaLibrary(JavadocJar.Javadoc()))
+}
+
+tasks {
+    processResources {
+        filter<ReplaceTokens>(
+            "tokens" to mapOf(
+                "version" to project.version
+            )
+        )
+    }
 }

@@ -1,6 +1,7 @@
 import com.vanniktech.maven.publish.JavaLibrary
 import com.vanniktech.maven.publish.JavadocJar
 import org.gradle.api.JavaVersion
+import org.apache.tools.ant.filters.ReplaceTokens
 
 plugins {
     `java-library`
@@ -25,8 +26,20 @@ dependencies {
     compileOnly(libs.annotations)
 
     testImplementation(libs.lavaplayer.v1)
+    testImplementation("org.apache.logging.log4j:log4j-core:2.19.0")
+    testImplementation("org.apache.logging.log4j:log4j-slf4j2-impl:2.19.0")
 }
 
 mavenPublishing {
     configure(JavaLibrary(JavadocJar.Javadoc()))
+}
+
+tasks {
+    processResources {
+        filter<ReplaceTokens>(
+            "tokens" to mapOf(
+                "version" to project.version
+            )
+        )
+    }
 }

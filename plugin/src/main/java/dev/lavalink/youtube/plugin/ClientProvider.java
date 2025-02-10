@@ -16,7 +16,7 @@ public interface ClientProvider {
         // This is a default list of clients. This list matches that of the
         // YoutubeAudioSourceManager. If that is updated, this should probably be
         // updated too.
-        return new String[] { "MUSIC", "WEB", "ANDROID", "TVHTML5EMBEDDED" };
+        return new String[] { "MUSIC", "WEB", "ANDROID_TESTSUITE", "TVHTML5EMBEDDED" };
     }
 
     Client[] getClients(String[] clients, OptionsProvider optionsProvider);
@@ -46,7 +46,12 @@ public interface ClientProvider {
         return Arrays.stream(enumValues)
             .filter(it -> it.getName().equals(name))
             .findFirst()
-            .map(ref -> ref.getClient(provider.getOptionsForClient(name)))
+            .map(ref -> {
+                ClientOptions options = provider.getOptionsForClient(name);
+
+                log.debug("Initialising client {} with options {}", ref.getName(), options);
+                return ref.getClient(options);
+            })
             .orElse(null);
     }
 

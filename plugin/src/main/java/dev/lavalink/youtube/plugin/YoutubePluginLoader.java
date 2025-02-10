@@ -9,6 +9,8 @@ import com.sedmelluq.lava.extensions.youtuberotator.tools.ip.Ipv6Block;
 import dev.arbjerg.lavalink.api.AudioPlayerManagerConfiguration;
 import dev.lavalink.youtube.YoutubeAudioSourceManager;
 import dev.lavalink.youtube.clients.ClientOptions;
+import dev.lavalink.youtube.clients.Web;
+import dev.lavalink.youtube.clients.WebEmbedded;
 import dev.lavalink.youtube.clients.skeleton.Client;
 import lavalink.server.config.RateLimitConfig;
 import lavalink.server.config.ServerConfig;
@@ -53,6 +55,12 @@ public class YoutubePluginLoader implements AudioPlayerManagerConfiguration {
         }
 
         this.clientProvider = provider;
+
+        try {
+            PluginInfo.checkForNewRelease();
+        } catch (Throwable ignored) {
+
+        }
     }
 
     private ClientProvider getClientProvider(String name) throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
@@ -155,6 +163,20 @@ public class YoutubePluginLoader implements AudioPlayerManagerConfiguration {
                 clients = clientProvider.getDefaultClients();
             } else {
                 clients = youtubeConfig.getClients();
+                Pot pot = youtubeConfig.getPot();
+
+                if (pot != null) {
+                    String token = pot.getToken();
+                    String visitorData = pot.getVisitorData();
+
+                    if (token != null && visitorData != null) {
+                        log.debug("Applying poToken and visitorData to WEB & WEBEMBEDDED client (token: {}, vd: {})", token, visitorData);
+                        WebEmbedded.setPoTokenAndVisitorData(token, visitorData);
+                        Web.setPoTokenAndVisitorData(token, visitorData);
+                    } else if (token != null || visitorData != null) {
+                        log.warn("Both pot.token and pot.visitorData must be specified and valid for pot to apply.");
+                    }
+                }
             }
 
             source = new YoutubeAudioSourceManager(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, clientProvider.getClients(clients, this::getOptionsForClient));
@@ -167,7 +189,7 @@ public class YoutubePluginLoader implements AudioPlayerManagerConfiguration {
             final int retryLimit = ratelimitConfig.getRetryLimit();
             final YoutubeIpRotatorSetup rotator = new YoutubeIpRotatorSetup(routePlanner)
                 .forConfiguration(source.getHttpInterfaceManager(), false)
-                .withMainDelegateFilter(null); // Necessary to avoid NPEs.
+                .withMainDelegateFilter(source.getContextFilter());
 
             if (retryLimit == 0) {
                 rotator.withRetryLimit(Integer.MAX_VALUE);
@@ -182,6 +204,15 @@ public class YoutubePluginLoader implements AudioPlayerManagerConfiguration {
 
         if (playlistLoadLimit != null) {
             source.setPlaylistPageCount(playlistLoadLimit);
+        }
+
+        if (youtubeConfig != null && youtubeConfig.getOauth() != null) {
+            YoutubeOauthConfig oauthConfig = youtubeConfig.getOauth();
+
+            if (oauthConfig.getEnabled()) {
+                log.debug("Configuring youtube oauth integration with token: \"{}\" skipInitialization: {}", oauthConfig.getRefreshToken(), oauthConfig.getSkipInitialization());
+                source.useOauth2(oauthConfig.getRefreshToken(), oauthConfig.getSkipInitialization());
+            }
         }
 
         audioPlayerManager.registerSourceManager(source);

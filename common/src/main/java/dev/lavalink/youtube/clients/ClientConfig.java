@@ -17,25 +17,49 @@ public class ClientConfig {
 
     private String name;
     private String userAgent;
+    private String visitorData;
     private String apiKey;
     private final Map<String, Object> root;
 
     public ClientConfig() {
-        this.root = new HashMap<>();
-        this.userAgent = null;
         this.name = null;
+        this.userAgent = null;
+        this.visitorData = null;
+        this.root = new HashMap<>();
     }
 
     private ClientConfig(@NotNull Map<String, Object> context,
                          @NotNull String userAgent,
+                         @NotNull String visitorData,
                          @NotNull String name) {
-        this.root = context;
-        this.userAgent = userAgent;
         this.name = name;
+        this.userAgent = userAgent;
+        this.visitorData = visitorData;
+        this.root = context;
+    }
+
+    public String getName() {
+        return this.name;
+    }
+
+    public String getUserAgent() {
+        return this.userAgent;
+    }
+
+    public String getVisitorData() {
+        return this.visitorData;
+    }
+
+    public String getApiKey() {
+        return this.apiKey;
+    }
+
+    public Map<String, Object> getRoot() {
+        return this.root;
     }
 
     public ClientConfig copy() {
-        return new ClientConfig(new HashMap<>(this.root), this.userAgent, this.name);
+        return new ClientConfig(new HashMap<>(this.root), this.userAgent, this.visitorData, this.name);
     }
 
     public ClientConfig withClientName(@NotNull String name) {
@@ -44,26 +68,42 @@ public class ClientConfig {
         return this;
     }
 
-    public String getName() {
-        return this.name;
-    }
-
     public ClientConfig withUserAgent(@NotNull String userAgent) {
         this.userAgent = userAgent;
         return this;
     }
 
-    public String getUserAgent() {
-        return this.userAgent;
+    public ClientConfig withVisitorData(@Nullable String visitorData) {
+        this.visitorData = visitorData;
+
+        if (visitorData != null) {
+            withClientField("visitorData", visitorData);
+        } else {
+            Map<String, Object> context = (Map<String, Object>) root.get("context");
+
+            if (context != null) {
+                Map<String, Object> client = (Map<String, Object>) context.get("client");
+
+                if (client != null) {
+                    client.remove("visitorData");
+
+                    if (client.isEmpty()) {
+                        context.remove("client");
+                    }
+                }
+
+                if (context.isEmpty()) {
+                    root.remove("context");
+                }
+            }
+        }
+
+        return this;
     }
 
     public ClientConfig withApiKey(@NotNull String apiKey) {
         this.apiKey = apiKey;
         return this;
-    }
-
-    public String getApiKey() {
-        return this.apiKey;
     }
 
     public Map<String, Object> putOnceAndJoin(@NotNull Map<String, Object> on,
@@ -117,6 +157,10 @@ public class ClientConfig {
     public ClientConfig setAttributes(@NotNull HttpInterface httpInterface) {
         if (userAgent != null) {
             httpInterface.getContext().setAttribute(YoutubeHttpContextFilter.ATTRIBUTE_USER_AGENT_SPECIFIED, userAgent);
+
+            if (visitorData != null) {
+                httpInterface.getContext().setAttribute(YoutubeHttpContextFilter.ATTRIBUTE_VISITOR_DATA_SPECIFIED, visitorData);
+            }
         }
 
         return this;
@@ -129,7 +173,8 @@ public class ClientConfig {
     public enum AndroidVersion {
         // https://apilevels.com/
         ANDROID_13("13", 33),
-        ANDROID_12("12", 31), // 12L => 32
+        ANDROID_12L("12L", 32),
+        ANDROID_12("12", 31),
         ANDROID_11("11", 30);
 
         private final String osVersion;

@@ -14,13 +14,11 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackInfo;
 import dev.lavalink.youtube.UrlTools.UrlInfo;
 import dev.lavalink.youtube.cipher.SignatureCipherManager;
-import dev.lavalink.youtube.clients.Android;
-import dev.lavalink.youtube.clients.Music;
-import dev.lavalink.youtube.clients.TvHtml5Embedded;
-import dev.lavalink.youtube.clients.Web;
+import dev.lavalink.youtube.clients.*;
 import dev.lavalink.youtube.clients.skeleton.Client;
 import dev.lavalink.youtube.http.YoutubeAccessTokenTracker;
 import dev.lavalink.youtube.http.YoutubeHttpContextFilter;
+import dev.lavalink.youtube.http.YoutubeOauth2Handler;
 import dev.lavalink.youtube.track.YoutubeAudioTrack;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -43,7 +41,6 @@ import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.
 public class YoutubeAudioSourceManager implements AudioSourceManager {
     // TODO: connect timeout = 16000ms, read timeout = 8000ms (as observed from scraped youtube config)
     // TODO: look at possibly scraping jsUrl from WEB config to save a request
-    // TODO: search providers use cookieless httpinterfacemanagers. should this do the same?
     // TODO(music): scrape config? it's identical to WEB.
 
     private static final Logger log = LoggerFactory.getLogger(YoutubeAudioSourceManager.class);
@@ -62,12 +59,15 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
     private static final Pattern shortHandPattern = Pattern.compile("^" + PROTOCOL_REGEX + "(?:" + DOMAIN_REGEX + "/(?:live|embed|shorts)|" + SHORT_DOMAIN_REGEX + ")/(?<videoId>.*)");
 
     protected final HttpInterfaceManager httpInterfaceManager;
+
     protected final boolean allowSearch;
     protected final boolean allowDirectVideoIds;
     protected final boolean allowDirectPlaylistIds;
     protected final Client[] clients;
 
-    protected final SignatureCipherManager cipherManager;
+    protected YoutubeHttpContextFilter contextFilter;
+    protected YoutubeOauth2Handler oauth2Handler;
+    protected SignatureCipherManager cipherManager;
 
     public YoutubeAudioSourceManager() {
         this(true);
@@ -78,8 +78,8 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
     }
 
     public YoutubeAudioSourceManager(boolean allowSearch, boolean allowDirectVideoIds, boolean allowDirectPlaylistIds) {
-        // query order: music -> web -> android -> tvhtml5embedded
-        this(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, new Music(), new Web(), new Android(), new TvHtml5Embedded());
+        // query order: music -> web -> androidtestsuite -> tvhtml5embedded
+        this(allowSearch, allowDirectVideoIds, allowDirectPlaylistIds, new Music(), new AndroidVr(), new Web(), new WebEmbedded());
     }
 
     /**
@@ -120,17 +120,30 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
                                      boolean allowDirectVideoIds,
                                      boolean allowDirectPlaylistIds,
                                      @NotNull Client... clients) {
+        this(
+            new YoutubeSourceOptions()
+                .setAllowSearch(allowSearch)
+                .setAllowDirectVideoIds(allowDirectVideoIds)
+                .setAllowDirectPlaylistIds(allowDirectPlaylistIds),
+            clients
+        );
+    }
+
+    public YoutubeAudioSourceManager(YoutubeSourceOptions options,
+                                     @NotNull Client... clients) {
         this.httpInterfaceManager = HttpClientTools.createCookielessThreadLocalManager();
-        this.allowSearch = allowSearch;
-        this.allowDirectVideoIds = allowDirectVideoIds;
-        this.allowDirectPlaylistIds = allowDirectPlaylistIds;
+        this.allowSearch = options.isAllowSearch();
+        this.allowDirectVideoIds = options.isAllowDirectVideoIds();
+        this.allowDirectPlaylistIds = options.isAllowDirectPlaylistIds();
         this.clients = clients;
         this.cipherManager = new SignatureCipherManager();
+        this.oauth2Handler = new YoutubeOauth2Handler(httpInterfaceManager);
 
-        YoutubeAccessTokenTracker tokenTracker = new YoutubeAccessTokenTracker(httpInterfaceManager);
-        YoutubeHttpContextFilter youtubeHttpContextFilter = new YoutubeHttpContextFilter();
-        youtubeHttpContextFilter.setTokenTracker(tokenTracker);
-        httpInterfaceManager.setHttpContextFilter(youtubeHttpContextFilter);
+        contextFilter = new YoutubeHttpContextFilter();
+        contextFilter.setTokenTracker(new YoutubeAccessTokenTracker(httpInterfaceManager));
+        contextFilter.setOauth2Handler(oauth2Handler);
+
+        httpInterfaceManager.setHttpContextFilter(contextFilter);
     }
 
     @Override
@@ -142,6 +155,25 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
         for (Client client : clients) {
             client.setPlaylistPageCount(count);
         }
+    }
+
+    /**
+     * Instructs this source to use Oauth2 integration.
+     * {@code null} is valid and will kickstart the oauth process.
+     * Providing a refresh token will likely skip having to authenticate your account prior to making requests,
+     * as long as the provided token is still valid.
+     * @param refreshToken The token to use for generating access tokens. Can be null.
+     * @param skipInitialization Whether linking of an account should be skipped, if you intend to provide a
+     *                           refresh token later. This only applies on null/empty/invalid refresh tokens.
+     *                           Valid refresh tokens will not be presented with an initialization prompt.
+     */
+    public void useOauth2(@Nullable String refreshToken, boolean skipInitialization) {
+        oauth2Handler.setRefreshToken(refreshToken, skipInitialization);
+    }
+
+    @Nullable
+    public String getOauth2RefreshToken() {
+        return oauth2Handler.getRefreshToken();
     }
 
     @Override
@@ -180,6 +212,7 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
                 }
 
                 log.debug("Attempting to load {} with client \"{}\"", reference.identifier, client.getIdentifier());
+                httpInterface.getContext().setAttribute(Client.OAUTH_CLIENT_ATTRIBUTE, client.supportsOAuth());
 
                 try {
                     AudioItem item = router.route(client);
@@ -191,6 +224,7 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
                     throw ExceptionTools.wrapUnfriendlyExceptions("This video cannot be loaded.", Severity.SUSPICIOUS, cbl.getCause());
                 } catch (Throwable t) {
                     log.debug("Client \"{}\" threw a non-fatal exception, storing and proceeding...", client.getIdentifier(), t);
+                    t.addSuppressed(ClientInformation.create(client));
                     lastException = t;
                 }
             }
@@ -240,7 +274,14 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
                 } else if ("/playlist".equals(urlInfo.path)) {
                     String playlistId = urlInfo.parameters.get("list");
 
-                    if (playlistId != null) return (client) -> client.loadPlaylist(this, httpInterface, playlistId, null);
+                    if (playlistId != null) {
+                        if (playlistId.startsWith("RD")) { // mix handling
+                            String videoId = playlistId.substring(2);
+                            return (client) -> client.loadMix(this, httpInterface, playlistId, videoId);
+                        }
+
+                        return (client) -> client.loadPlaylist(this, httpInterface, playlistId, null);
+                    }
                 } else if ("/watch_videos".equals(urlInfo.path)) {
                     String videoIds = urlInfo.parameters.get("video_ids");
 
@@ -338,6 +379,16 @@ public class YoutubeAudioSourceManager implements AudioSourceManager {
     @NotNull
     public Client[] getClients() {
         return clients;
+    }
+
+    @NotNull
+    public YoutubeHttpContextFilter getContextFilter() {
+        return contextFilter;
+    }
+
+    @NotNull
+    public YoutubeOauth2Handler getOauth2Handler() {
+        return oauth2Handler;
     }
 
     @NotNull

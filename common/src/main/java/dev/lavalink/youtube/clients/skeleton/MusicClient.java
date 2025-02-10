@@ -6,6 +6,7 @@ import com.sedmelluq.discord.lavaplayer.tools.JsonBrowser;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpClientTools;
 import com.sedmelluq.discord.lavaplayer.tools.io.HttpInterface;
 import com.sedmelluq.discord.lavaplayer.track.*;
+import dev.lavalink.youtube.OptionDisabledException;
 import dev.lavalink.youtube.YoutubeAudioSourceManager;
 import dev.lavalink.youtube.clients.ClientConfig;
 import dev.lavalink.youtube.track.format.TrackFormats;
@@ -14,6 +15,8 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -23,6 +26,8 @@ import java.util.List;
  * The base class for a client that can be used with music.youtube.com.
  */
 public abstract class MusicClient implements Client {
+    private static final Logger log = LoggerFactory.getLogger(MusicClient.class);
+
     @NotNull
     protected abstract ClientConfig getBaseClientConfig(@NotNull HttpInterface httpInterface);
 
@@ -95,6 +100,12 @@ public abstract class MusicClient implements Client {
                 .values();
 
             String author = runs.get(0).get("text").text();
+
+            if (author == null) {
+                log.debug("Author field is null, client: {}, json: {}", getIdentifier(), json.format());
+                author = "Unknown artist";
+            }
+
             JsonBrowser lastElement = runs.get(runs.size() - 1);
 
             if (!lastElement.get("navigationEndpoint").isNull()) {
@@ -131,7 +142,7 @@ public abstract class MusicClient implements Client {
                                      @NotNull String searchQuery) {
         if (!getOptions().getSearching()) {
             // why would you even disable searching for this client lol
-            throw new RuntimeException("Searching is disabled for this client");
+            throw new OptionDisabledException("Searching is disabled for this client");
         }
 
         JsonBrowser json = getMusicSearchResult(httpInterface, searchQuery);

@@ -14,6 +14,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,15 +25,17 @@ import static com.sedmelluq.discord.lavaplayer.tools.FriendlyException.Severity.
  * The interface for a Client.
  */
 public interface Client {
+    String OAUTH_CLIENT_ATTRIBUTE = "yt-oauth-enabled-client";
+
     String WATCH_URL = "https://www.youtube.com/watch?v=";
     String API_BASE_URL = "https://youtubei.googleapis.com/youtubei/v1";
-    String PLAYER_URL = API_BASE_URL + "/player";
-    String SEARCH_URL = API_BASE_URL + "/search";
-    String NEXT_URL = API_BASE_URL + "/next";
-    String BROWSE_URL = API_BASE_URL + "/browse";
+    String PLAYER_URL = API_BASE_URL + "/player?prettyPrint=false";
+    String SEARCH_URL = API_BASE_URL + "/search?prettyPrint=false";
+    String NEXT_URL = API_BASE_URL + "/next?prettyPrint=false";
+    String BROWSE_URL = API_BASE_URL + "/browse?prettyPrint=false";
 
     String MUSIC_API_BASE_URL = "https://music.youtube.com/youtubei/v1";
-    String MUSIC_SEARCH_URL = MUSIC_API_BASE_URL + "/search";
+    String MUSIC_SEARCH_URL = MUSIC_API_BASE_URL + "/search?prettyPrint=false";
 
     // Should be videos only, whilst also bypassing YouTube's filter
     // for queries that trigger the suicide/self-harm warning.
@@ -134,6 +137,21 @@ public interface Client {
     }
 
     /**
+     * Transforms a given playback URL as necessary. For example, you can add query parameters
+     * or resolve any challenge parameters that might be needed.
+     * @param originalUri The original stream URI. This will be completely unmodified, and is
+     *                    provided as it has been received from YouTube.
+     * @param resolvedPlaybackUri The playback URI. This will have already been
+     *                            transformed by the SignatureCipherManager.
+     * @return The new playback URI.
+     */
+    @NotNull
+    default URI transformPlaybackUri(@NotNull URI originalUri,
+                                     @NotNull URI resolvedPlaybackUri) {
+        return resolvedPlaybackUri;
+    }
+
+    /**
      * Builds an audio track with the given parameters.
      * Hint: You can use {@link YoutubeAudioSourceManager#buildAudioTrack(AudioTrackInfo)} to
      * build a track with the given AudioTrackInfo.
@@ -164,7 +182,11 @@ public interface Client {
     @NotNull
     String getIdentifier();
 
-    @NotNull
+    /**
+     * @return The parameters to use for playback. May be {@code null}, which will
+     *         avoid populating the "params" field in payloads.
+     */
+    @Nullable
     String getPlayerParams();
 
     @NotNull
@@ -185,6 +207,18 @@ public interface Client {
      */
     default boolean supportsFormatLoading() {
         return getOptions().getPlayback();
+    }
+
+    
+    default boolean isEmbedded() {
+        return false;
+    }
+
+    /**
+     * @return True, if this client supports account linking via OAuth (i.e. TV)
+     */
+    default boolean supportsOAuth() {
+        return false;
     }
 
     void setPlaylistPageCount(int count);
